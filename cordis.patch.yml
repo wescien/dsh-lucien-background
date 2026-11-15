@@ -1,0 +1,3 @@
+- insert:
+    - id: aurora-background
+      name: '@local/aurora-background'

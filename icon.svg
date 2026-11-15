@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1024"/>
+      <stop offset="1" stop-color="#141a33"/>
+    </linearGradient>
+    <linearGradient id="bandA" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#4f6bff" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#4f6bff" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#4f6bff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="bandB" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#22d3ee" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#22d3ee" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="bandC" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#a855f7" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#a855f7" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#a855f7" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#bg)"/>
+  <path d="M8 40c10-9 18 3 28-4s14-9 20-4" fill="none" stroke="url(#bandA)" stroke-width="5" stroke-linecap="round"/>
+  <path d="M8 30c11-8 17 4 27-3s15-8 21-3" fill="none" stroke="url(#bandB)" stroke-width="3.5" stroke-linecap="round"/>
+  <path d="M8 50c9-7 19 2 28-5s14-6 20-2" fill="none" stroke="url(#bandC)" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="18" cy="16" r="1.6" fill="#e6ecff" fill-opacity="0.9"/>
+  <circle cx="34" cy="12" r="1.1" fill="#e6ecff" fill-opacity="0.6"/>
+  <circle cx="48" cy="18" r="1.4" fill="#e6ecff" fill-opacity="0.75"/>
+</svg>
