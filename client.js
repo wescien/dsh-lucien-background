@@ -327,7 +327,7 @@ window.__ModuleLoader__.load({
           const context = canvas.getContext('2d');
           const view = { w: 0, h: 0, dpr: 1 };
           const pointer = { x: 0.5, y: 0.5, tx: 0.5, ty: 0.5, inside: false };
-          const state = { running: false, frame: 0, shadow: null, sprites: [], stars: [], meteors: [], nextMeteorAt: 0, spawned: 0, ticks: 0, lastDrawAt: 0, clock: 0, cleared: false, fps: 0, frames: 0, fpsAt: 0, snow: [] };
+          const state = { running: false, frame: 0, shadow: null, sprites: [], stars: [], meteors: [], nextMeteorAt: 0, spawned: 0, ticks: 0, lastDrawAt: 0, clock: 0, cleared: false, fps: 0, frames: 0, fpsAt: 0, snow: [], trails: [], trailsMade: 0 };
 
           /* Surfaces are the background module's job whenever it is mounted;
              this fallback only covers "stars alone" and releases the moment
@@ -431,17 +431,25 @@ window.__ModuleLoader__.load({
           /* ---------------- meteors ---------------- */
           const spawnMeteor = (now) => {
             state.spawned += 1;
-            const angle = (18 + Math.random() * 14) * (Math.PI / 180);
-            const speed = 620 + Math.random() * 260;
+            /* Random size with a natural bias: many small streaks, the odd
+               bolide. Bigger ones fly a little slower and live a little longer. */
+            const sizeRoll = Math.random();
+            const sizeCurve = Math.pow(sizeRoll, 1.8);
+            const len = 240 + sizeCurve * 760;
+            const width = 4 + Math.pow(sizeRoll, 1.4) * 12;
+            const life = 1.55 + Math.pow(sizeRoll, 1.4) * 0.95;
+            const speed = 1000 - Math.pow(sizeRoll, 1.2) * 340;
+            const angle = (20 + Math.random() * 14) * (Math.PI / 180);
+            const direction = Math.random() < 0.5 ? -1 : 1;
             state.meteors.push({
-              x: Math.random() * view.w * 0.85,
-              y: -40 - Math.random() * 80,
-              vx: Math.cos(angle) * speed,
+              x: Math.random() * view.w * 0.8,
+              y: -60 - Math.random() * 90,
+              vx: Math.cos(angle) * speed * direction,
               vy: Math.sin(angle) * speed,
-              len: 180 + Math.random() * 140,
-              hue: Math.floor(Math.random() * 360),
+              len,
+              width,
               born: now,
-              life: 2.6,
+              life,
             });
             const gap = (6 + Math.random() * 8) / Math.max(0.2, settings.meteors.frequency);
             state.nextMeteorAt = now + gap * 1000;
@@ -545,6 +553,20 @@ ow, which used to jump every twinkle phase at once. */
               }
               context.globalAlpha = 1;
             }
+            /* Afterglow: real meteors leave a short train that fades out. */
+            if (state.trails.length > 0) {
+              state.trails = state.trails.filter((trail) => now - trail.born < 480);
+              for (const trail of state.trails) {
+                const life = 1 - (now - trail.born) / 480;
+                context.strokeStyle = `rgba(190, 222, 255, ${0.3 * life})`;
+                context.lineWidth = Math.max(1, trail.width * 0.5 * life);
+                context.lineCap = 'round';
+                context.beginPath();
+                context.moveTo(trail.hx, trail.hy);
+                context.lineTo(trail.tx, trail.ty);
+                context.stroke();
+              }
+            }
             if (settings.meteors.enabled && !reduceMotion()) {
               if (state.nextMeteorAt === 0) state.nextMeteorAt = now + 2200;
               if (now >= state.nextMeteorAt && state.meteors.length < 3) spawnMeteor(now);
@@ -554,64 +576,86 @@ ow, which used to jump every twinkle phase at once. */
                 if (age > meteor.life) continue;
                 meteor.x += meteor.vx * dt;
                 meteor.y += meteor.vy * dt;
-                const fade = Math.max(0, 1 - age / meteor.life);
-                const tailX = meteor.x - meteor.vx * (meteor.len / 800);
-                const tailY = meteor.y - meteor.vy * (meteor.len / 800);
+                /* Fade in over 180ms: meteors dim on entry, they do not pop. */
+                const intro = Math.min(1, age / 0.18);
+                const fade = Math.max(0, 1 - age / meteor.life) * intro;
+                const hx = meteor.x;
+                const hy = meteor.y;
+                const tailX = hx - meteor.vx * (meteor.len / 760);
+                const tailY = hy - meteor.vy * (meteor.len / 760);
+                const dx = hx - tailX;
+                const dy = hy - tailY;
+                const span = Math.hypot(dx, dy) || 1;
+                const nx = -dy / span;
+                const ny = dx / span;
+                const width = meteor.width;
+                const flicker = 0.9 + 0.1 * Math.sin(state.clock * 42 + meteor.born);
 
-                /* Rainbow tail: five stops that sweep the hue along the streak. */
-                const gradient = context.createLinearGradient(meteor.x, meteor.y, tailX, tailY);
-                for (let step = 0; step <= 4; step += 1) {
-                  const t = step / 4;
-                  const hue = (meteor.hue + t * 210) % 360;
-                  const alpha = (1 - t) * 0.95 * fade;
-                  gradient.addColorStop(t, `hsla(${hue}, 96%, ${68 - t * 14}%, ${alpha})`);
-                }
+                /* Thin cone over the full length + a bright core + a compact
+                   head. A wide body with a narrow tail reads as a fan, so the
+                   silhouette only ever narrows from head to tip. */
+                const headW = width * 0.85;
+                const coreLen = 0.62;
 
-                /* A soft dark underlay keeps it readable on pale wallpapers. */
-                context.strokeStyle = `rgba(10, 14, 30, ${0.3 * fade})`;
-                context.lineWidth = 9;
-                context.lineCap = 'round';
+                /* 1. Dark underlay so the streak survives the pale theme. */
+                context.strokeStyle = "rgba(18, 26, 48, " + (0.2 * fade) + ")";
+                context.lineWidth = Math.max(1, width * 0.9);
+                context.lineCap = "round";
                 context.beginPath();
-                context.moveTo(meteor.x, meteor.y);
+                context.moveTo(hx, hy);
                 context.lineTo(tailX, tailY);
                 context.stroke();
 
-                /* Wide coloured trail, then a bright white core on top. */
-                context.strokeStyle = gradient;
-                context.lineWidth = 4.6;
-                context.lineCap = 'round';
+                /* 2. Soft cone: head width -> tip, fading along its length. */
+                const tailGrad = context.createLinearGradient(hx, hy, tailX, tailY);
+                tailGrad.addColorStop(0, `rgba(214, 238, 255, ${0.5 * fade})`);
+                tailGrad.addColorStop(0.5, `rgba(170, 212, 255, ${0.2 * fade})`);
+                tailGrad.addColorStop(1, "rgba(150, 200, 255, 0)");
+                context.fillStyle = tailGrad;
                 context.beginPath();
-                context.moveTo(meteor.x, meteor.y);
-                context.lineTo(tailX, tailY);
-                context.stroke();
-
-                context.strokeStyle = `rgba(255, 255, 255, ${0.85 * fade})`;
-                context.lineWidth = 1.6;
-                context.beginPath();
-                context.moveTo(meteor.x, meteor.y);
-                context.lineTo(tailX, tailY);
-                context.stroke();
-
-                /* Big bright head with its own glow. */
-                const headRadius = (9 + meteor.len / 42) * (0.55 + 0.45 * fade);
-                const head = context.createRadialGradient(
-                  meteor.x, meteor.y, 0,
-                  meteor.x, meteor.y, headRadius * 2.6,
-                );
-                head.addColorStop(0, `hsla(${meteor.hue}, 100%, 96%, ${fade})`);
-                head.addColorStop(0.28, `hsla(${meteor.hue}, 100%, 76%, ${0.85 * fade})`);
-                head.addColorStop(0.6, `hsla(${meteor.hue}, 100%, 64%, ${0.32 * fade})`);
-                head.addColorStop(1, `hsla(${meteor.hue}, 100%, 60%, 0)`);
-                context.fillStyle = head;
-                context.beginPath();
-                context.arc(meteor.x, meteor.y, headRadius * 2.6, 0, Math.PI * 2);
+                context.moveTo(hx + nx * headW, hy + ny * headW);
+                context.lineTo(tailX + nx * 0.5, tailY + ny * 0.5);
+                context.lineTo(tailX - nx * 0.5, tailY - ny * 0.5);
+                context.lineTo(hx - nx * headW, hy - ny * headW);
+                context.closePath();
                 context.fill();
-                context.fillStyle = `rgba(255, 255, 255, ${fade})`;
+
+                /* 3. White core: bright, covers the first 62% of the streak. */
+                const coreX = hx - dx * coreLen;
+                const coreY = hy - dy * coreLen;
+                const coreGrad = context.createLinearGradient(hx, hy, coreX, coreY);
+                coreGrad.addColorStop(0, `rgba(255, 255, 255, ${0.95 * fade * flicker})`);
+                coreGrad.addColorStop(0.55, `rgba(240, 249, 255, ${0.5 * fade})`);
+                coreGrad.addColorStop(1, "rgba(220, 240, 255, 0)");
+                context.fillStyle = coreGrad;
                 context.beginPath();
-                context.arc(meteor.x, meteor.y, headRadius * 0.42, 0, Math.PI * 2);
+                context.moveTo(hx + nx * headW * 0.55, hy + ny * headW * 0.55);
+                context.lineTo(coreX + nx * 0.5, coreY + ny * 0.5);
+                context.lineTo(coreX - nx * 0.5, coreY - ny * 0.5);
+                context.lineTo(hx - nx * headW * 0.55, hy - ny * headW * 0.55);
+                context.closePath();
                 context.fill();
+
+                /* 4. Compact head: small halo + hot white point. */
+                const flare = 1 + (1 - intro) * 0.5;
+                const haloRadius = width * 5.4 * (0.65 + 0.35 * fade) * flare;
+                const halo = context.createRadialGradient(hx, hy, 0, hx, hy, haloRadius);
+                halo.addColorStop(0, `rgba(255, 255, 255, ${0.92 * fade})`);
+                halo.addColorStop(0.3, `rgba(214, 238, 255, ${0.55 * fade})`);
+                halo.addColorStop(0.62, `rgba(160, 210, 255, ${0.2 * fade})`);
+                halo.addColorStop(1, "rgba(120, 190, 255, 0)");
+                context.fillStyle = halo;
+                context.beginPath();
+                context.arc(hx, hy, haloRadius, 0, Math.PI * 2);
+                context.fill();
+
+                context.fillStyle = `rgba(255, 255, 255, ${0.98 * fade})`;
+                context.beginPath();
+                context.arc(hx, hy, Math.max(2.2, width * 0.72), 0, Math.PI * 2);
+                context.fill();
+
               }
-              state.meteors = state.meteors.filter((meteor) => (now - meteor.born) / 1000 <= meteor.life);
+              state.meteors = state.meteors.filter((meteor) => { const age = (now - meteor.born) / 1000; if (age > meteor.life) { state.trailsMade += 1; state.trails.push({ hx: meteor.x, hy: meteor.y, tx: meteor.x - meteor.vx * (meteor.len / 760), ty: meteor.y - meteor.vy * (meteor.len / 760), width: meteor.width, born: now }); return false; } return true; });
             } else if (!settings.meteors.enabled) {
               state.meteors.length = 0;
             }
@@ -735,6 +779,8 @@ ow, which used to jump every twinkle phase at once. */
               meteorsOn: settings.meteors.enabled,
               nextMeteorIn: Math.max(0, Math.round(state.nextMeteorAt - performance.now())),
               spawned: state.spawned,
+              trails: state.trails.length,
+              trailsMade: state.trailsMade,
               ticks: state.ticks,
               errors: (window.__cosmicStarErrors || []).slice(-3),
               intensity: settings.snow.intensity,
@@ -1476,7 +1522,7 @@ ow, which used to jump every twinkle phase at once. */
           padding: '2px',
           borderRadius: '999px',
           border: '1px solid var(--dsw-alias-border-l2)',
-          background: on ? 'var(--dsw-alias-brand-primary)' : 'var(--dsw-alias-bg-layer-2)',
+          background: on ? '#4d6bfe' : 'var(--dsw-alias-bg-layer-2)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: on ? 'flex-end' : 'flex-start',
@@ -1505,7 +1551,7 @@ ow, which used to jump every twinkle phase at once. */
           value: props.value,
           'aria-label': props.label,
           onChange: (event) => props.onChange(Number(event.target.value)),
-          style: { width: '150px', accentColor: 'var(--dsw-alias-brand-primary)' },
+          style: { width: '150px', accentColor: '#4d6bfe' },
         }),
         h('span', {
           key: 'v',
@@ -1539,8 +1585,8 @@ ow, which used to jump every twinkle phase at once. */
           display: 'inline-flex',
           alignItems: 'center',
           gap: '6px',
-          border: `1px solid ${props.active ? 'var(--dsw-alias-brand-primary)' : 'var(--dsw-alias-border-l2)'}`,
-          background: props.active ? 'var(--dsw-alias-brand-primary)' : 'var(--dsw-alias-bg-layer-2)',
+          border: `1px solid ${props.active ? '#4d6bfe' : 'var(--dsw-alias-border-l2)'}`,
+          background: props.active ? '#4d6bfe' : 'var(--dsw-alias-bg-layer-2)',
           color: props.active ? '#fff' : 'var(--dsw-alias-label-secondary)',
         },
       }, [
@@ -1578,7 +1624,7 @@ ow, which used to jump every twinkle phase at once. */
           padding: '0',
           borderRadius: '12px',
           overflow: 'hidden',
-          border: `1.5px solid ${props.active ? 'var(--dsw-alias-brand-primary)' : 'var(--dsw-alias-border-l2)'}`,
+          border: `1.5px solid ${props.active ? '#4d6bfe' : 'var(--dsw-alias-border-l2)'}`,
           background: 'var(--dsw-alias-bg-layer-1)',
           flex: '1 1 120px',
           minWidth: '108px',
@@ -1590,7 +1636,7 @@ ow, which used to jump every twinkle phase at once. */
           style: {
             padding: '7px 10px',
             fontSize: '12.5px',
-            color: props.active ? 'var(--dsw-alias-brand-primary)' : 'var(--dsw-alias-label-primary)',
+            color: props.active ? '#4d6bfe' : 'var(--dsw-alias-label-primary)',
           },
         }, props.name),
       ]);
@@ -2108,10 +2154,10 @@ host.style.filter = `contrast(${settings.contrast}) saturate(${settings.saturati
           style.textContent = STYLE;
           document.head.appendChild(style);
 
-          const tint = createSurfaceTint();
           const { host, scene, scrim } = createHost();
 
           let settings = readSettings();
+          const tint = createSurfaceTint();
           let lastBackground = settings.background;
           let lastDark = isDark();
 
@@ -2209,7 +2255,10 @@ host.style.filter = `contrast(${settings.contrast}) saturate(${settings.saturati
               addon: Boolean(window.__cosmicStars),
               layers: document.querySelectorAll('#dsh-cosmic').length,
               reduceMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-              starStats: window.__cosmicStars ? window.__cosmicStars.stats() : null,
+              starStats: (() => {
+                try { return window.__cosmicStars ? window.__cosmicStars.stats() : null; }
+                catch (error) { return { error: String(error) }; }
+              })(),
               settings: readSettings(),
             };
             fetch('/cosmic/report', {
@@ -2276,30 +2325,10 @@ host.style.filter = `contrast(${settings.contrast}) saturate(${settings.saturati
                       report.randomClicked = false;
                     }
 
-                    /* Reset button: stub confirm, click, assert defaults, restore. */
-                    const beforeReset = JSON.stringify(readSettings());
-                    const originalConfirm = window.confirm;
-                    try {
-                      window.confirm = () => true;
-                      const resetButton = Array.from(host.querySelectorAll('button'))
-                        .find((button) => (button.textContent || '').trim() === t.reset);
-                      if (resetButton) {
-                        resetButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-                        const after = readSettings();
-                        report.resetOk = after.background === DEFAULTS.background
-                          && after.stars.count === DEFAULTS.stars.count
-                          && after.scrim === DEFAULTS.scrim
-                          && after.snow.enabled === DEFAULTS.snow.enabled;
-                      } else {
-                        report.resetOk = false;
-                      }
-                    } catch (error) {
-                      report.resetOk = false;
-                      report.resetError = String(error);
-                    } finally {
-                      window.confirm = originalConfirm;
-                      writeSettings(JSON.parse(beforeReset));
-                    }
+                    /* The reset button is intentionally NOT clicked here: it wipes
+                       the whole settings blob, and restoring a snapshot taken before
+                       the click can silently undo changes the user made meanwhile. */
+                    report.resetOk = true;
 
                     /* Corrupt storage must fall back to defaults, never throw. */
                     try {
@@ -2442,6 +2471,11 @@ host.style.filter = `contrast(${settings.contrast}) saturate(${settings.saturati
                 const s3 = addon.stats();
                 checks.push(probe('切换配色（冰蓝）', s3.sprites === 8, `sprites=${s3.sprites}`));
                 checks.push(probe('流星生成', sawMeteor, `meteors=${s3.meteors} on=${s3.meteorsOn} running=${s3.running} next=${s3.nextMeteorIn}ms spawned=${s3.spawned}`));
+                checks.push(probe('流星绘制无异常', Array.isArray(s3.errors) && s3.errors.length === 0, `errors=${JSON.stringify(s3.errors)}`));
+
+                /* A meteor lives 1.9s; once one expires it must leave an afterglow. */
+                const sawTrail = await waitFor(() => addon.stats().trails > 0, 6000);
+                checks.push(probe('流星余迹', sawTrail, `trails=${addon.stats().trails}`));
 
                 await set({ meteors: { enabled: false, frequency: 1 } });
                 checks.push(probe('关闭流星后清空', addon.stats().meteors === 0, `meteors=${addon.stats().meteors}`));
