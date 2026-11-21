@@ -327,7 +327,7 @@ window.__ModuleLoader__.load({
           const context = canvas.getContext('2d');
           const view = { w: 0, h: 0, dpr: 1 };
           const pointer = { x: 0.5, y: 0.5, tx: 0.5, ty: 0.5, inside: false };
-          const state = { running: false, frame: 0, shadow: null, sprites: [], stars: [], meteors: [], nextMeteorAt: 0, spawned: 0, ticks: 0, lastDrawAt: 0, clock: 0, cleared: false, fps: 0, frames: 0, fpsAt: 0, snow: [], trails: [], trailsMade: 0, glints: [], goldenSpawned: 0 };
+          const state = { running: false, frame: 0, shadow: null, sprites: [], stars: [], meteors: [], nextMeteorAt: 0, spawned: 0, ticks: 0, lastDrawAt: 0, clock: 0, cleared: false, fps: 0, frames: 0, fpsAt: 0, snow: [], trails: [], trailsMade: 0 };
 
           /* Surfaces are the background module's job whenever it is mounted;
              this fallback only covers "stars alone" and releases the moment
@@ -429,81 +429,31 @@ window.__ModuleLoader__.load({
           };
 
           /* ---------------- meteors ---------------- */
-          /* 金色传说：极小概率出现的一颗超大火流星，慢、粗、带金色余烬。
-             0.008 ≈ 每 125 颗流星里一颗，按平均 10 秒一颗算，大约 20 分钟
-             才能撞见一次 —— 要的就是「撞见」而不是「常有」。 */
-          const GOLDEN_CHANCE = 0.008;
-
-          /* 落位公式单独抽出来：生成时用它，自检时也用它，避免两边算法漂移。
-             金色流星要「整条都在屏幕里」，所以先按最长尾长算可行域，再把头
-             和尾尖分别摆在距边缘 margin 以内的安全区。 */
-          const placeGolden = (viewW, viewH, width, angle, direction, wanted) => {
-            const margin = Math.max(56, width * 5.8);
-            const cosA = Math.abs(Math.cos(angle));
-            const sinA = Math.sin(angle);
-            const fit = Math.min((viewW - margin * 2) / cosA, (viewH - margin * 2) / sinA);
-            const drawn = Math.max(560, Math.min(wanted, fit));
-            const spanX = Math.max(0, viewW - margin * 2 - cosA * drawn);
-            const spanY = Math.max(0, viewH - margin * 2 - sinA * drawn);
-            const x = direction > 0
-              ? margin + cosA * drawn + Math.random() * spanX
-              : margin + Math.random() * spanX;
-            const y = margin + sinA * drawn + Math.random() * spanY * 0.55;
-            const tailX = x - cosA * drawn * direction;
-            const tailY = y - sinA * drawn;
-            return { margin, cosA, sinA, drawn, x, y, tailX, tailY };
-          };
-
-          /* 抽 40 次落位，返回四端离屏幕边缘的最小距离；<0 就是越界。 */
-          const goldenFit = () => {
-            let worst = Infinity;
-            for (let i = 0; i < 40; i += 1) {
-              const width = 22 + Math.random() * 12;
-              const angle = (17 + Math.random() * 9) * (Math.PI / 180);
-              const direction = Math.random() < 0.5 ? -1 : 1;
-              const spot = placeGolden(view.w, view.h, width, angle, direction, 1700 + Math.random() * 700);
-              worst = Math.min(
-                worst,
-                spot.x, spot.y, spot.tailX, spot.tailY,
-                view.w - spot.x, view.h - spot.y, view.w - spot.tailX, view.h - spot.tailY,
-              );
-            }
-            return Math.round(worst);
-          };
-
-          const spawnMeteor = (now, forceGolden) => {
+          const spawnMeteor = (now) => {
             state.spawned += 1;
-            const golden = forceGolden === true || Math.random() < GOLDEN_CHANCE;
-            if (golden) state.goldenSpawned += 1;
             /* Random size with a natural bias: many small streaks, the odd
-               bolide. Bigger ones fly a little slower and live a little longer.
-               The golden one sits off the chart: longest, thickest, slowest. */
+               bolide. Bigger ones fly a little slower and live a little longer. */
             const sizeRoll = Math.random();
             const sizeCurve = Math.pow(sizeRoll, 1.8);
-            const width = golden ? 22 + Math.random() * 12 : 4 + Math.pow(sizeRoll, 1.4) * 12;
-            const life = golden ? 3.1 + Math.random() * 0.7 : 1.55 + Math.pow(sizeRoll, 1.4) * 0.95;
-            const speed = golden ? 380 + Math.random() * 120 : 1000 - Math.pow(sizeRoll, 1.2) * 340;
-            const angle = (golden ? 17 + Math.random() * 9 : 20 + Math.random() * 14) * (Math.PI / 180);
+            const width = 4 + Math.pow(sizeRoll, 1.4) * 12;
+            const life = 1.55 + Math.pow(sizeRoll, 1.4) * 0.95;
+            const speed = 1000 - Math.pow(sizeRoll, 1.2) * 340;
+            const angle = (20 + Math.random() * 14) * (Math.PI / 180);
             const direction = Math.random() < 0.5 ? -1 : 1;
             const vx = Math.cos(angle) * speed * direction;
             const vy = Math.sin(angle) * speed;
 
             /* The renderer stretches the streak by speed/760, so size the drawn
-               length first and convert. A golden one is then placed so both the
-               head and the far end of its tail sit inside the viewport: 金色传说
-               must be seen whole instead of sliding in from behind an edge. */
-            let drawn = golden ? 1700 + Math.random() * 700 : 240 + sizeCurve * 760;
-            let x;
-            let y;
-            if (golden) {
-              const spot = placeGolden(view.w, view.h, width, angle, direction, drawn);
-              drawn = spot.drawn;
-              x = spot.x;
-              y = spot.y;
-            } else {
-              x = Math.random() * view.w * 0.8;
-              y = -60 - Math.random() * 90;
-            }
+               length first and convert. */
+            const drawn = 240 + sizeCurve * 760;
+            /* The streak starts above the top edge and travels toward the
+               direction it is heading, so the start column has to leave room on
+               that side: a left-flying streak spawned near x=0 would cross the
+               left edge before it ever dropped into view and show up as a sliver
+               hugging the border. */
+            const runway = view.w * 0.8;
+            const x = direction > 0 ? Math.random() * runway : view.w - Math.random() * runway;
+            const y = -60 - Math.random() * 90;
 
             state.meteors.push({
               x,
@@ -514,7 +464,6 @@ window.__ModuleLoader__.load({
               width,
               born: now,
               life,
-              golden,
             });
             const gap = (6 + Math.random() * 8) / Math.max(0.2, settings.meteors.frequency);
             state.nextMeteorAt = now + gap * 1000;
@@ -530,8 +479,6 @@ window.__ModuleLoader__.load({
             const dt = last === 0 ? 0 : Math.min(0.05, Math.max(0, (now - last) / 1000));
             last = now;
             state.clock += dt;
-            /* One theme read per frame: isDark() touches the DOM. */
-            const paleTheme = !isDark();
             pointer.x += (pointer.tx - pointer.x) * Math.min(1, dt * 4);
             pointer.y += (pointer.ty - pointer.y) * Math.min(1, dt * 4);
 
@@ -621,13 +568,10 @@ window.__ModuleLoader__.load({
             }
             /* Afterglow: real meteors leave a short train that fades out. */
             if (state.trails.length > 0) {
-              state.trails = state.trails.filter((trail) => now - trail.born < (trail.golden ? 1100 : 480));
+              state.trails = state.trails.filter((trail) => now - trail.born < 480);
               for (const trail of state.trails) {
-                const total = trail.golden ? 1100 : 480;
-                const life = 1 - (now - trail.born) / total;
-                context.strokeStyle = trail.golden
-                  ? "rgba(255, 205, 112, " + (0.45 * life) + ")"
-                  : "rgba(190, 222, 255, " + (0.3 * life) + ")";
+                const life = 1 - (now - trail.born) / 480;
+                context.strokeStyle = "rgba(190, 222, 255, " + (0.3 * life) + ")";
                 context.lineWidth = Math.max(1, trail.width * 0.5 * life);
                 context.lineCap = 'round';
                 context.beginPath();
@@ -645,10 +589,8 @@ window.__ModuleLoader__.load({
                 if (age > meteor.life) continue;
                 meteor.x += meteor.vx * dt;
                 meteor.y += meteor.vy * dt;
-                const gold = meteor.golden === true;
-                /* Fade in: quick for a common streak, slow enough for the golden
-                   one that it feels like it ignites instead of popping in. */
-                const intro = Math.min(1, age / (gold ? 0.55 : 0.18));
+                /* Fade in so a streak ignites instead of popping in. */
+                const intro = Math.min(1, age / 0.18);
                 const fade = Math.max(0, 1 - age / meteor.life) * intro;
                 const hx = meteor.x;
                 const hy = meteor.y;
@@ -660,7 +602,6 @@ window.__ModuleLoader__.load({
                 const nx = -dy / span;
                 const ny = dx / span;
                 const width = meteor.width;
-                const pale = paleTheme;
                 const flicker = 0.9 + 0.1 * Math.sin(state.clock * 42 + meteor.born);
 
                 /* Thin cone over the full length + a bright core + a compact
@@ -670,10 +611,8 @@ window.__ModuleLoader__.load({
                 const coreLen = 0.62;
 
                 /* 1. Dark underlay so the streak survives the pale theme. */
-                context.strokeStyle = gold
-                  ? (pale ? "rgba(96, 58, 10, " + (0.24 * fade) + ")" : "rgba(84, 52, 6, " + (0.34 * fade) + ")")
-                  : "rgba(18, 26, 48, " + (0.2 * fade) + ")";
-                context.lineWidth = Math.max(1, width * (gold && pale ? 0.62 : 0.9));
+                context.strokeStyle = "rgba(18, 26, 48, " + (0.2 * fade) + ")";
+                context.lineWidth = Math.max(1, width * 0.9);
                 context.lineCap = "round";
                 context.beginPath();
                 context.moveTo(hx, hy);
@@ -682,21 +621,9 @@ window.__ModuleLoader__.load({
 
                 /* 2. Soft cone: head width -> tip, fading along its length. */
                 const tailGrad = context.createLinearGradient(hx, hy, tailX, tailY);
-                if (gold) {
-                  if (pale) {
-                    tailGrad.addColorStop(0, "rgba(255, 178, 70, " + (0.92 * fade) + ")");
-                    tailGrad.addColorStop(0.5, "rgba(232, 140, 36, " + (0.6 * fade) + ")");
-                    tailGrad.addColorStop(1, "rgba(198, 104, 12, 0)");
-                  } else {
-                    tailGrad.addColorStop(0, "rgba(255, 228, 156, " + (0.62 * fade) + ")");
-                    tailGrad.addColorStop(0.5, "rgba(255, 186, 82, " + (0.28 * fade) + ")");
-                    tailGrad.addColorStop(1, "rgba(255, 150, 40, 0)");
-                  }
-                } else {
-                  tailGrad.addColorStop(0, "rgba(214, 238, 255, " + (0.5 * fade) + ")");
-                  tailGrad.addColorStop(0.5, "rgba(170, 212, 255, " + (0.2 * fade) + ")");
-                  tailGrad.addColorStop(1, "rgba(150, 200, 255, 0)");
-                }
+                tailGrad.addColorStop(0, "rgba(214, 238, 255, " + (0.5 * fade) + ")");
+                tailGrad.addColorStop(0.5, "rgba(170, 212, 255, " + (0.2 * fade) + ")");
+                tailGrad.addColorStop(1, "rgba(150, 200, 255, 0)");
                 context.fillStyle = tailGrad;
                 context.beginPath();
                 context.moveTo(hx + nx * headW, hy + ny * headW);
@@ -710,22 +637,9 @@ window.__ModuleLoader__.load({
                 const coreX = hx - dx * coreLen;
                 const coreY = hy - dy * coreLen;
                 const coreGrad = context.createLinearGradient(hx, hy, coreX, coreY);
-                if (gold) {
-                  if (pale) {
-                    coreGrad.addColorStop(0, "rgba(255, 244, 210, " + (0.98 * fade * flicker) + ")");
-                    coreGrad.addColorStop(0.16, "rgba(255, 200, 96, " + (0.95 * fade) + ")");
-                    coreGrad.addColorStop(0.6, "rgba(238, 148, 44, " + (0.7 * fade) + ")");
-                    coreGrad.addColorStop(1, "rgba(205, 105, 15, 0)");
-                  } else {
-                    coreGrad.addColorStop(0, "rgba(255, 255, 244, " + (0.98 * fade * flicker) + ")");
-                    coreGrad.addColorStop(0.55, "rgba(255, 234, 176, " + (0.6 * fade) + ")");
-                    coreGrad.addColorStop(1, "rgba(255, 205, 120, 0)");
-                  }
-                } else {
-                  coreGrad.addColorStop(0, "rgba(255, 255, 255, " + (0.95 * fade * flicker) + ")");
-                  coreGrad.addColorStop(0.55, "rgba(240, 249, 255, " + (0.5 * fade) + ")");
-                  coreGrad.addColorStop(1, "rgba(220, 240, 255, 0)");
-                }
+                coreGrad.addColorStop(0, "rgba(255, 255, 255, " + (0.95 * fade * flicker) + ")");
+                coreGrad.addColorStop(0.55, "rgba(240, 249, 255, " + (0.5 * fade) + ")");
+                coreGrad.addColorStop(1, "rgba(220, 240, 255, 0)");
                 context.fillStyle = coreGrad;
                 context.beginPath();
                 context.moveTo(hx + nx * headW * 0.55, hy + ny * headW * 0.55);
@@ -736,74 +650,26 @@ window.__ModuleLoader__.load({
                 context.fill();
 
                 /* 4. Compact head: halo + hot point. */
-                const flare = 1 + (1 - intro) * (gold ? 0.2 : 0.5);
-                const haloRadius = width * (gold ? 7 : 5.4) * (0.65 + 0.35 * fade) * flare;
+                const flare = 1 + (1 - intro) * 0.5;
+                const haloRadius = width * 5.4 * (0.65 + 0.35 * fade) * flare;
                 const halo = context.createRadialGradient(hx, hy, 0, hx, hy, haloRadius);
-                if (gold) {
-                  if (pale) {
-                    halo.addColorStop(0, "rgba(255, 236, 176, " + (0.95 * fade) + ")");
-                    halo.addColorStop(0.28, "rgba(255, 196, 88, " + (0.62 * fade) + ")");
-                    halo.addColorStop(0.62, "rgba(240, 150, 40, " + (0.3 * fade) + ")");
-                    halo.addColorStop(1, "rgba(220, 120, 20, 0)");
-                  } else {
-                    halo.addColorStop(0, "rgba(255, 252, 236, " + (0.98 * fade) + ")");
-                    halo.addColorStop(0.28, "rgba(255, 218, 132, " + (0.66 * fade) + ")");
-                    halo.addColorStop(0.62, "rgba(255, 170, 62, " + (0.26 * fade) + ")");
-                    halo.addColorStop(1, "rgba(255, 140, 30, 0)");
-                  }
-                } else {
-                  halo.addColorStop(0, "rgba(255, 255, 255, " + (0.92 * fade) + ")");
-                  halo.addColorStop(0.3, "rgba(214, 238, 255, " + (0.55 * fade) + ")");
-                  halo.addColorStop(0.62, "rgba(160, 210, 255, " + (0.2 * fade) + ")");
-                  halo.addColorStop(1, "rgba(120, 190, 255, 0)");
-                }
+                halo.addColorStop(0, "rgba(255, 255, 255, " + (0.92 * fade) + ")");
+                halo.addColorStop(0.3, "rgba(214, 238, 255, " + (0.55 * fade) + ")");
+                halo.addColorStop(0.62, "rgba(160, 210, 255, " + (0.2 * fade) + ")");
+                halo.addColorStop(1, "rgba(120, 190, 255, 0)");
                 context.fillStyle = halo;
                 context.beginPath();
                 context.arc(hx, hy, haloRadius, 0, Math.PI * 2);
                 context.fill();
 
-                context.fillStyle = gold
-                  ? (pale ? "rgba(255, 214, 120, " + (0.99 * fade) + ")" : "rgba(255, 250, 222, " + (0.99 * fade) + ")")
-                  : "rgba(255, 255, 255, " + (0.98 * fade) + ")";
+                context.fillStyle = "rgba(255, 255, 255, " + (0.98 * fade) + ")";
                 context.beginPath();
-                context.arc(hx, hy, Math.max(gold ? 3.4 : 2.2, width * (gold ? 0.8 : 0.72)), 0, Math.PI * 2);
+                context.arc(hx, hy, Math.max(2.2, width * 0.72), 0, Math.PI * 2);
                 context.fill();
-
-                /* 5. Golden embers: the legendary streak sheds sparks. */
-                if (gold && state.glints.length < 220) {
-                  for (let g = 0; g < 3; g++) {
-                    state.glints.push({
-                      x: hx + (Math.random() - 0.5) * width * 3.2,
-                      y: hy + (Math.random() - 0.5) * width * 3.2,
-                      vx: (Math.random() - 0.5) * 70 + meteor.vx * 0.06,
-                      vy: (Math.random() - 0.5) * 70 + meteor.vy * 0.06,
-                      r: 0.9 + Math.random() * 2.4,
-                      born: now,
-                      life: 520 + Math.random() * 900,
-                    });
-                  }
-                }
-
               }
-              /* Golden embers drift and cool down. */
-              if (state.glints.length > 0) {
-                state.glints = state.glints.filter((glint) => now - glint.born < glint.life);
-                for (const glint of state.glints) {
-                  const k = 1 - (now - glint.born) / glint.life;
-                  glint.x += glint.vx * dt;
-                  glint.y += glint.vy * dt;
-                  context.fillStyle = paleTheme
-                    ? "rgba(236, 150, 40, " + (0.9 * k * k) + ")"
-                    : "rgba(255, 212, 126, " + (0.9 * k * k) + ")";
-                  context.beginPath();
-                  context.arc(glint.x, glint.y, Math.max(0.4, glint.r * (0.6 + 0.4 * k)), 0, Math.PI * 2);
-                  context.fill();
-                }
-              }
-              state.meteors = state.meteors.filter((meteor) => { const age = (now - meteor.born) / 1000; if (age > meteor.life) { state.trailsMade += 1; state.trails.push({ hx: meteor.x, hy: meteor.y, tx: meteor.x - meteor.vx * (meteor.len / 760), ty: meteor.y - meteor.vy * (meteor.len / 760), width: meteor.width, born: now, golden: meteor.golden === true }); return false; } return true; });
+              state.meteors = state.meteors.filter((meteor) => { const age = (now - meteor.born) / 1000; if (age > meteor.life) { state.trailsMade += 1; state.trails.push({ hx: meteor.x, hy: meteor.y, tx: meteor.x - meteor.vx * (meteor.len / 760), ty: meteor.y - meteor.vy * (meteor.len / 760), width: meteor.width, born: now }); return false; } return true; });
             } else if (!settings.meteors.enabled) {
               state.meteors.length = 0;
-              state.glints.length = 0;
             }
 
             if (state.running) state.frame = requestAnimationFrame(draw);
@@ -925,9 +791,6 @@ window.__ModuleLoader__.load({
               meteorsOn: settings.meteors.enabled,
               nextMeteorIn: Math.max(0, Math.round(state.nextMeteorAt - performance.now())),
               spawned: state.spawned,
-              golden: state.goldenSpawned,
-              goldenFit: goldenFit(),
-              glints: state.glints.length,
               trails: state.trails.length,
               trailsMade: state.trailsMade,
               ticks: state.ticks,
@@ -935,12 +798,6 @@ window.__ModuleLoader__.load({
               intensity: settings.snow.intensity,
               snow: state.snow.length,
             }),
-            /* Test hook: force the legendary golden meteor without waiting for
-               the 0.8% roll. Only the self-test calls this. */
-            spawnGolden: () => {
-              spawnMeteor(performance.now(), true);
-              return state.goldenSpawned;
-            },
           };
           window.__cosmicStars = hook;
 
@@ -2628,21 +2485,7 @@ host.style.filter = `contrast(${settings.contrast}) saturate(${settings.saturati
                 checks.push(probe('流星生成', sawMeteor, `meteors=${s3.meteors} on=${s3.meteorsOn} running=${s3.running} next=${s3.nextMeteorIn}ms spawned=${s3.spawned}`));
                 checks.push(probe('流星绘制无异常', Array.isArray(s3.errors) && s3.errors.length === 0, `errors=${JSON.stringify(s3.errors)}`));
 
-                /* 金色传说：force the rare variant instead of waiting for the roll. */
-                const goldenBefore = s3.golden;
-                if (typeof addon.spawnGolden === 'function') {
-                  addon.spawnGolden();
-                  const sawGolden = await waitFor(() => addon.stats().golden > goldenBefore, 3000);
-                  const gs = addon.stats();
-                  const embers = await waitFor(() => addon.stats().glints > 0, 2000);
-                  checks.push(probe('金色传说流星', sawGolden, `golden=${gs.golden} spawned=${gs.spawned}`));
-                  checks.push(probe('金色余烬', embers, `glints=${addon.stats().glints}`));
-                  checks.push(probe('金色流星无异常', Array.isArray(gs.errors) && gs.errors.length === 0, `errors=${JSON.stringify(gs.errors)}`));
-                } else {
-                  checks.push(probe('金色传说流星', false, '缺少 spawnGolden 钩子'));
-                }
-
-                /* A meteor lives 1.9s; once one expires it must leave an afterglow. */
+                /* A meteor lives 1.55-2.5s; once one expires it must leave an afterglow. */
                 const sawTrail = await waitFor(() => addon.stats().trails > 0, 6000);
                 checks.push(probe('流星余迹', sawTrail, `trails=${addon.stats().trails}`));
 
