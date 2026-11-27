@@ -1,6 +1,6 @@
 {
   "name": "@local/aurora-background",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": true,
   "description": "Animated aurora wallpaper behind the DeepSeek Harness Web UI",
   "license": "MIT",
