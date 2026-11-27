@@ -18,6 +18,28 @@
 
 ## 安装
 
+### 一行安装（Windows）
+
+装过 DSH 桌面端、并且至少启动过一次之后，打开 PowerShell 粘这一行：
+
+```powershell
+irm https://gcore.jsdelivr.net/gh/wescien/dsh-lucien-background@main/install.ps1 | iex
+```
+
+它会做三件事，然后提示重启：
+
+1. 把 9 个文件下载到 `%USERPROFILE%\.dsh\plugins\aurora-background`
+2. 在 `%USERPROFILE%\.dsh\profiles\*` 的 `package.json` 里写上 `"@local/aurora-background": "link:…"` 并把包名加进 `dsh.profile.bundles`（改之前备份成 `package.json.bak`，重复运行不会重复写）
+3. 在 `node_modules\@local\` 下建一个指向插件目录的 junction
+
+重启 DSH 桌面端后，从 **设置 → 宇宙无敌背景** 进入就是。
+
+- 装到别的地方：`… | iex` 换成先下载再执行，加 `-PluginDir D:\dsh-plugins\aurora-background`
+- DSH 目录不在默认位置：先设 `$env:DSH_HOME`，或下载后用 `pwsh -File install.ps1 -DshHome D:\other\.dsh`
+- `gcore.jsdelivr.net` 不通时，把链接换成 `https://raw.githubusercontent.com/wescien/dsh-lucien-background/main/install.ps1`
+
+### 手动安装
+
 插件以 **Cordis bundle** 形式提供，需要在 DSH 桌面端的 profile（默认 `%USERPROFILE%\.dsh\profiles\desktop`）里注册为依赖与行。
 
 **方式一：插件管理器**
