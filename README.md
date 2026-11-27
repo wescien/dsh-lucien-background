@@ -23,7 +23,7 @@
 装过 DSH 桌面端、并且至少启动过一次之后，打开 PowerShell，把下面这一行整段粘进去回车：
 
 ```powershell
-$r=(iwr https://gcore.jsdelivr.net/gh/wescien/dsh-lucien-background@main/install.ps1 -UseBasicParsing).Content; if($r -is [byte[]]){$r=[Text.Encoding]::UTF8.GetString($r)}; iex $r.TrimStart([char]0xFEFF)
+$r=(iwr https://gcore.jsdelivr.net/gh/wescien/dsh-lucien-background@v2.2.0/install.ps1 -UseBasicParsing).Content; if($r -is [byte[]]){$r=[Text.Encoding]::UTF8.GetString($r)}; iex $r.TrimStart([char]0xFEFF)
 ```
 
 它会做三件事，然后提示重启：
@@ -187,6 +187,7 @@ icon.svg           插件图标
 
 | 版本 | 变化 |
 |---|---|
+| 2.2.0 | 加 `install.ps1`：Windows 一条命令装好（下载源码包 → 落盘 → 写 profile → 建 junction） |
 | 2.1.0 | 移除金色传说流星，只保留原本的冷白色随机流星；起点按飞行方向留出跑道，亮头一定从上边缘进画面 |
 | 1.9.2 | 流星改为随机大小（240–1000px 幂律），尺寸联动速度与寿命，头部光晕放大 |
 | 1.9.x | 流星重做：单一冷白色、锥形细尾、亮芯、180ms 淡入、480ms 余迹、暗描边 |
