@@ -1,8 +1,9 @@
 ﻿<#
   宇宙无敌背景 · 一行安装脚本
 
-  用法（Windows PowerShell）：
-    irm https://raw.githubusercontent.com/wescien/dsh-lucien-background/main/install.ps1 | iex
+  用法（Windows PowerShell 5.1 或 PowerShell 7，一行）：
+    $r=(iwr https://gcore.jsdelivr.net/gh/wescien/dsh-lucien-background@main/install.ps1 -UseBasicParsing).Content;
+    if($r -is [byte[]]){$r=[Text.Encoding]::UTF8.GetString($r)}; iex $r.TrimStart([char]0xFEFF)
 
   或者已经下载到本地：
     powershell -ExecutionPolicy Bypass -File install.ps1
@@ -58,28 +59,36 @@ Write-Host "插件目录   $PluginDir"
 Write-Host ''
 
 # ---------- 1. 下载插件文件 ----------
-$apiBase = "https://api.github.com/repos/$Repo/contents"
-$headers = @{
-  'User-Agent' = 'dsh-cosmic-background-installer'
-  'Accept'     = 'application/vnd.github.raw'
+# 一次拉整包 zip：比逐个文件打 GitHub API 快，也不会撞到匿名 API 的 60 次/小时限流。
+New-Item -ItemType Directory -Force -Path $PluginDir | Out-Null
+
+$zipUrl = "https://codeload.github.com/$Repo/zip/refs/heads/$Ref"
+$work = Join-Path ([System.IO.Path]::GetTempPath()) ("cosmic-bg-" + [guid]::NewGuid().ToString('N'))
+$zip = "$work.zip"
+New-Item -ItemType Directory -Force -Path $work | Out-Null
+try {
+  Invoke-WebRequest -Uri $zipUrl -OutFile $zip -UseBasicParsing
+  Expand-Archive -Path $zip -DestinationPath $work -Force
+} catch {
+  throw "下载源码包失败：$($_.Exception.Message)。检查网络，或手动下载 $Repo 解压到 $PluginDir"
 }
 
-New-Item -ItemType Directory -Force -Path $PluginDir | Out-Null
+$root = Get-ChildItem $work -Directory | Select-Object -First 1
+if (-not $root) { throw "源码包解压后是空的：$zip" }
 
 $downloaded = 0
 foreach ($file in $Files) {
+  $source = Join-Path $root.FullName ($file -replace '/', '\')
+  if (-not (Test-Path $source)) { throw "源码包里缺少 $file（是不是分支名写错了？当前 $Ref）" }
   $target = Join-Path $PluginDir ($file -replace '/', '\')
   $parent = Split-Path -Parent $target
   if ($parent -and -not (Test-Path $parent)) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
-  $url = "$apiBase/$file`?ref=$Ref"
-  try {
-    Invoke-WebRequest -Uri $url -Headers $headers -OutFile $target -UseBasicParsing
-    $downloaded += 1
-  } catch {
-    throw "下载 $file 失败：$($_.Exception.Message)。检查网络，或手动下载仓库解压到 $PluginDir"
-  }
+  Copy-Item -LiteralPath $source -Destination $target -Force
+  $downloaded += 1
 }
-Write-Step "已下载 $downloaded 个文件"
+Remove-Item $zip -Force -ErrorAction SilentlyContinue
+Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
+Write-Step "已安装 $downloaded 个文件"
 
 # ---------- 2/3/4. 登记到每个 profile ----------
 $profilesRoot = Join-Path $DshHome 'profiles'
